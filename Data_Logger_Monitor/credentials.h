@@ -72,6 +72,8 @@ extern const int WIFI_COUNT;
 extern const char* MQTT_SERVER;
 extern const int   MQTT_PORT;
 extern const int   MQTTS_PORT;
+extern const int   WS_PORT;
+extern const int   WSS_PORT;
 extern const char* MQTT_USER;
 extern const char* MQTT_PASS;
 extern const char* MQTT_TOPIC;

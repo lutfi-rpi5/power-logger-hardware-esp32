@@ -1,14 +1,16 @@
 #include <WiFi.h>
-// #include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoMqttClient.h>
 #include <PubSubClient.h>
 #include <PZEM004Tv30.h>
 #include "credentials.h"
 #include "ResetEnergy.h"
 #include "WifiSelector.h"
+#include "DisplayOLED.h"
 // #include "credentials_example.h"
 
 // ===================== WiFi ======================
-WiFiClient espClient;
+WiFiClientSecure espClient;
 
 // ============ Instance WiFiSelector ==============
 WiFiSelector wifiManager(10000);  // timeout 10 detik
@@ -28,6 +30,7 @@ unsigned long lastMsg = 0;
 HardwareSerial PZEMSerial1(1);
 HardwareSerial PZEMSerial2(2);
 #define NUM_PZEMS 3   // Ubah sesuai jumlah PZEM
+DisplayOLED oled;
 
 // Inisialisasi PZEM dengan alamat unik
 PZEM004Tv30 pzems[NUM_PZEMS] = {
@@ -65,6 +68,10 @@ const char* line_status[]       = {"lutpiii/workshop/line_status/l1",    "lutpii
 enum LineStatus { LINE_GOOD, LINE_UNDERVOLTAGE, LINE_ISSUED };
 LineStatus lineStatus[NUM_PZEMS];  // status tiap line 
 
+// =============== Buffer untuk OLED ===============
+float vol[3], cur[3], powe[3], pff[3], freqArr[3], ener[3];
+int st[3];
+
 // ================== SETUP WIFI ==================
 void setup_wifi() {
   if (!wifiManager.connectBestNetwork()) {
@@ -91,17 +98,33 @@ void reconnect() {
   }
 }
 
+float randFloat(float minVal, float maxVal) {
+  return minVal + ((float)random(0, 10000) / 10000.0) * (maxVal - minVal);
+}
+
+void generateDummyData(float &voltage, float &current, float &power, float &energy, float &freq, float &pf) {
+  voltage = randFloat(200, 220);      // 180–240 V (normal + undervolt simulation)
+  current = randFloat(48.0, 50.0);    // 0.1–50 A
+  freq    = randFloat(50.0, 50.5);    // 50Hz +- tolerance
+  pf      = randFloat(0.6, 0.8);      // 0.5–1.0 realistic PF
+
+  power   = voltage * current * pf;   // P = V × I × pf
+  energy += randFloat(2200, 4000);    // simulate energy increasing (Wh)
+}
+
 // ================== SETUP ==================
 void setup() {
   Serial.begin(115200);
   setup_wifi();
 
   resetEnergy.begin();
+  oled.begin();
 
-  client.setServer(MQTT_SERVER, MQTT_PORT);
+  client.setServer(MQTT_SERVER, MQTTS_PORT);
   // espClient.setInsecure(); // WARNING: tidak aman
-  // espClient.setCACert(CA_CERT);
+  espClient.setCACert(CA_CERT);
 
+  randomSeed(analogRead(0));  // seed PRNG
   // Init Serial2 untuk PZEM
   // PZEM_SERIAL.begin(9600, SERIAL_8N1, PZEM_RX_PIN, PZEM_TX_PIN);
 }
@@ -118,6 +141,12 @@ void loop() {
     if (!wifiManager.isConnected()) {
       Serial.println("WiFi terputus, mencoba koneksi ulang...");
       wifiManager.connectBestNetwork();
+    } else if(wifiManager.isConnected()) {
+      Serial.println("🔄🔄🔄🔄🔄 Wifi Re-checker 🔄🔄🔄🔄🔄");
+      Serial.println("🔄🔄🔄🔄🔄 Wifi Re-checker 🔄🔄🔄🔄🔄");
+      Serial.println("🔄🔄🔄🔄🔄 Wifi Re-checker 🔄🔄🔄🔄🔄");
+      Serial.println("🔄🔄🔄🔄🔄 Wifi Re-checker 🔄🔄🔄🔄🔄");
+      Serial.println("🔄🔄🔄🔄🔄 Wifi Re-checker 🔄🔄🔄🔄🔄");
     }
   }
 
@@ -128,16 +157,35 @@ void loop() {
     lastMsg = now;
 
     for (int i = 0; i < NUM_PZEMS; i++) {
-      float voltage = pzems[i].voltage();
-      float current = pzems[i].current();
-      float power   = pzems[i].power();
-      float energy  = pzems[i].energy()*1000;
-      float freq    = pzems[i].frequency();
-      float pf      = pzems[i].pf();
+      // float voltage = pzems[i].voltage();
+      // float current = pzems[i].current();
+      // float power   = pzems[i].power();
+      // float energy  = pzems[i].energy()*1000;
+      // float freq    = pzems[i].frequency();
+      // float pf      = pzems[i].pf();
+
+      // pzems[i].voltage();
+      // pzems[i].current();
+      // pzems[i].power();
+      // pzems[i].energy();
+      // pzems[i].frequency();
+      // pzems[i].pf();
+
+      float voltage, current, power, energy = 0, freq, pf;
+      generateDummyData(voltage, current, power, energy, freq, pf);
 
       // Apparent Power & Reactive Power
       float va = voltage * current;
       float var = sqrt((va * va) - (power * power));
+
+      // Simpan ke buffer
+      vol[i]      = voltage;
+      cur[i]      = current;
+      powe[i]     = power;
+      pff[i]      = pf;
+      freqArr[i]  = freq;
+      ener[i]     = energy;
+      st[i]       = lineStatus[i];
 
       // if(!isnan(voltage)){
       //   lineStatus[i] = LINE_GOOD;
@@ -221,5 +269,6 @@ void loop() {
     }
 
     Serial.println("=== Data Published ===");
+    oled.update(vol, cur, powe, pff, freqArr, ener, st);
   }
 }
