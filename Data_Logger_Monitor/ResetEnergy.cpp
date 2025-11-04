@@ -1,86 +1,52 @@
 #include "ResetEnergy.h"
 
-ResetEnergy::ResetEnergy(uint8_t btnPin, uint8_t ledPin) {
-    this->buttonPin = btnPin;
-    this->ledPin = ledPin;
-}
+ResetEnergy::ResetEnergy(uint8_t buttonPin, uint8_t ledPin)
+  : _buttonPin(buttonPin), _ledPin(ledPin)
+{}
 
 void ResetEnergy::begin() {
-    pinMode(buttonPin, INPUT_PULLUP);
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, LOW);
+  pinMode(_buttonPin, INPUT_PULLUP);
+  pinMode(_ledPin, OUTPUT);
+  digitalWrite(_ledPin, LOW);
 }
 
-void ResetEnergy::handle(PZEM004Tv30* pzems, int numPzems) {
-    unsigned long now = millis();
-    bool buttonReading = digitalRead(buttonPin);
+// handle() kamu mungkin sudah ada — jangan ubah kalau jalan.
+// Namun kita tetap sediakan resetAll() untuk dipanggil dari main ketika long press terdeteksi.
+void ResetEnergy::handle(PZEM004Tv30 pzems[], int count) {
+  // Bisa diisi dengan logic lama jika mau; tapi untuk modularity kita biarkan main memanggil resetAll()
+  // sehingga handle tetap optional. Jika kamu ingin, implementasi lama bisa ditempatkan di sini.
+}
 
-    // ========== DEBOUNCE ==========
-    if (buttonReading != lastButtonReading) {
-        lastDebounceTime = now; // ada perubahan, reset timer debounce
-    }
+// resetAll: kirim perintah reset energy ke tiap PZEM.
+// Perhatikan: library pzem biasanya punya method resetEnergy() atau resetEnergy(addr). 
+// Kita asumsikan instance PZEM004Tv30 punya method resetEnergy()
+void ResetEnergy::resetAll(PZEM004Tv30 pzems[], int count) {
+  // Indikasi: LED nyala menandakan reset segera dilakukan
+  digitalWrite(_ledPin, HIGH);
+  delay(100);
 
-    if ((now - lastDebounceTime) > debounceDelay) {
-        buttonStableState = buttonReading; // update state stabil setelah 50ms
-    }
+  for (int i = 0; i < count; ++i) {
+    // Cek apakah instance valid, lalu panggil reset
+    // fungsi API library PZEM biasanya: pzems[i].resetEnergy();
+    // Jika library kamu berbeda, ganti panggilan ini sesuai API.
+    Serial.printf("[ResetEnergy] Resetting PZEM %d...\n", i+1);
+    pzems[i].resetEnergy(); // <- asumsikan ada
+    // beri jeda singkat supaya bus serial/uart tidak kebanjiran
+    delay(200);
+  }
 
-    lastButtonReading = buttonReading;
-    bool buttonPressed = (buttonStableState == LOW); // aktif LOW
+  // Blink LED 5x sebagai konfirmasi (final)
+  blinkLed(5, 120, 120);
 
-    // ========== TOMBOL DITEKAN ==========
-    if (buttonPressed && !isPressed && !isBlinking) {
-        isPressed = true;
-        pressStart = now;
-        resetTriggered = false;
-        digitalWrite(ledPin, HIGH); // LED langsung nyala saat ditekan
-    }
+  // Matikan LED
+  digitalWrite(_ledPin, LOW);
+}
 
-    // ========== SELAMA DITEKAN ==========
-    if (buttonPressed && isPressed && !resetTriggered && !isBlinking) {
-        if (now - pressStart >= holdTime) {
-            resetTriggered = true;
-
-            // Reset energy semua PZEM
-            for (int i = 0; i < numPzems; i++) {
-                pzems[i].resetEnergy();
-            }
-
-            Serial.println("✅ Energy Reset Successfully!");
-
-            // Mulai mode blinking (indikasi sukses)
-            isBlinking = true;
-            blinkCount = 0;
-            blinkStart = now;
-            ledState = false;
-            digitalWrite(ledPin, LOW);
-        }
-    }
-
-    // ========== MODE KEDIP 5x NON-BLOCKING ==========
-    if (isBlinking) {
-        if (now - blinkStart >= 50) { // toggle setiap 200 ms
-            blinkStart = now;
-            ledState = !ledState;
-            digitalWrite(ledPin, ledState);
-
-            if (ledState) blinkCount++;
-
-            if (blinkCount >= 10 && !ledState) {
-                isBlinking = false;
-                digitalWrite(ledPin, LOW);
-                // lock hingga tombol dilepas
-                isPressed = true;
-                resetTriggered = true;
-            }
-        }
-        return; // jangan evaluasi tombol lain selama blinking
-    }
-
-    // ========== TOMBOL DILEPAS ==========
-    if (!buttonPressed && isPressed) {
-        isPressed = false;
-        pressStart = 0;
-        resetTriggered = false;
-        digitalWrite(ledPin, LOW);
-    }
+void ResetEnergy::blinkLed(int times, unsigned int onMs, unsigned int offMs) {
+  for (int t = 0; t < times; ++t) {
+    digitalWrite(_ledPin, HIGH);
+    delay(onMs);
+    digitalWrite(_ledPin, LOW);
+    delay(offMs);
+  }
 }

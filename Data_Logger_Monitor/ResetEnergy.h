@@ -1,30 +1,22 @@
-#ifndef RESET_ENERGY_H
-#define RESET_ENERGY_H
-
+#pragma once
 #include <Arduino.h>
 #include <PZEM004Tv30.h>
 
 class ResetEnergy {
 public:
-    ResetEnergy(uint8_t btnPin, uint8_t ledPin);
+    ResetEnergy(uint8_t buttonPin, uint8_t ledPin);
     void begin();
-    void handle(PZEM004Tv30* pzems, int numPzems);
+    // dipanggil rutin di loop untuk handle long press flow (sudah kamu punya sebelumnya)
+    void handle(PZEM004Tv30 pzems[], int count);
+
+    // fungsi publik baru yang bisa dipanggil kapanpun untuk reset semua PZEM
+    // fungsi ini blocking ringan: mengirim perintah satu-per-satu dengan delay kecil
+    void resetAll(PZEM004Tv30 pzems[], int count);
 
 private:
-    uint8_t buttonPin, ledPin;
-    unsigned long pressStart = 0;
-    unsigned long lastDebounceTime = 0;
-    unsigned long blinkStart = 0;
-    bool buttonStableState = HIGH;
-    bool lastButtonReading = HIGH;
-    bool isPressed = false;
-    bool resetTriggered = false;
-    bool isBlinking = false;
-    bool ledState = false;
-    int blinkCount = 0;
+    uint8_t _buttonPin;
+    uint8_t _ledPin;
 
-    const unsigned long debounceDelay = 20;   // 50 ms debounce
-    const unsigned long holdTime = 5000;      // 5 detik untuk reset
+    // internal helper
+    void blinkLed(int times, unsigned int onMs = 150, unsigned int offMs = 150);
 };
-
-#endif

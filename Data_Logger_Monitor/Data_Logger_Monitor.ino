@@ -7,6 +7,7 @@
 #include "ResetEnergy.h"
 #include "WifiSelector.h"
 #include "DisplayOLED.h"
+#include "Button.h"
 // #include "credentials_example.h"
 
 // ===================== WiFi ======================
@@ -31,6 +32,9 @@ HardwareSerial PZEMSerial1(1);
 HardwareSerial PZEMSerial2(2);
 #define NUM_PZEMS 3   // Ubah sesuai jumlah PZEM
 DisplayOLED oled;
+
+#define BUTTON_PIN  5
+Button btn(BUTTON_PIN, 5000); // sesuai
 
 // Inisialisasi PZEM dengan alamat unik
 PZEM004Tv30 pzems[NUM_PZEMS] = {
@@ -119,6 +123,7 @@ void setup() {
 
   resetEnergy.begin();
   oled.begin();
+  oled.enableAutoScroll(false);
 
   client.setServer(MQTT_SERVER, MQTTS_PORT);
   // espClient.setInsecure(); // WARNING: tidak aman
@@ -133,6 +138,8 @@ void setup() {
 void loop() {
   if (!client.connected()) reconnect();
   client.loop();
+
+  btn.update();
 
   // WiFi auto check tiap 30 detik
   static unsigned long lastWiFiCheck = 0;
@@ -150,7 +157,16 @@ void loop() {
     }
   }
 
-  resetEnergy.handle(pzems, NUM_PZEMS);
+  // resetEnergy.handle(pzems, NUM_PZEMS);
+  if (btn.isShortPressed()) {
+    uint8_t next = (oled.getPage() + 1) % 3;
+    oled.setPage(next);
+  }
+
+  if (btn.isLongPressed()) {
+    // panggil reset untuk semua PZEM
+    resetEnergy.resetAll(pzems, NUM_PZEMS);
+  }
 
   unsigned long now = millis();
   if (now - lastMsg > 500) {  // interval 1 detik
