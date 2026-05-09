@@ -34,7 +34,7 @@ HardwareSerial PZEMSerial2(2);
 DisplayOLED oled;
 
 #define BUTTON_PIN  5
-Button btn(BUTTON_PIN, 5000); // sesuai
+Button btn(BUTTON_PIN, 5000);
 
 // Inisialisasi PZEM dengan alamat unik
 PZEM004Tv30 pzems[NUM_PZEMS] = {
@@ -129,7 +129,7 @@ void setup() {
   // espClient.setInsecure(); // WARNING: tidak aman
   espClient.setCACert(CA_CERT);
 
-  randomSeed(analogRead(0));  // seed PRNG
+  // randomSeed(analogRead(0));  // seed PRNG
   // Init Serial2 untuk PZEM
   // PZEM_SERIAL.begin(9600, SERIAL_8N1, PZEM_RX_PIN, PZEM_TX_PIN);
 }
@@ -173,12 +173,12 @@ void loop() {
     lastMsg = now;
 
     for (int i = 0; i < NUM_PZEMS; i++) {
-      // float voltage = pzems[i].voltage();
-      // float current = pzems[i].current();
-      // float power   = pzems[i].power();
-      // float energy  = pzems[i].energy()*1000;
-      // float freq    = pzems[i].frequency();
-      // float pf      = pzems[i].pf();
+      float voltage = pzems[i].voltage();
+      float current = pzems[i].current();
+      float power   = pzems[i].power();
+      float energy  = pzems[i].energy()*1000;
+      float freq    = pzems[i].frequency();
+      float pf      = pzems[i].pf();
 
       // pzems[i].voltage();
       // pzems[i].current();
@@ -187,8 +187,8 @@ void loop() {
       // pzems[i].frequency();
       // pzems[i].pf();
 
-      float voltage, current, power, energy = 0, freq, pf;
-      generateDummyData(voltage, current, power, energy, freq, pf);
+      // float voltage, current, power, energy = 0, freq, pf;
+      // generateDummyData(voltage, current, power, energy, freq, pf);
 
       // Apparent Power & Reactive Power
       float va = voltage * current;
@@ -279,8 +279,8 @@ void loop() {
 
       // Publish status line
       const char* statusStr = (lineStatus[i] == LINE_GOOD) ? "good"
-                             : (lineStatus[i] == LINE_UNDERVOLTAGE) ? "undervoltage"
-                             : "issued";
+                            : (lineStatus[i] == LINE_UNDERVOLTAGE) ? "undervoltage"
+                            : "issued";
       client.publish(line_status[i], statusStr);
     }
 

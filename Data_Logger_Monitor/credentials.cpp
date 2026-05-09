@@ -37,11 +37,11 @@
 #include "credentials.h"
 
 // ---------- WiFi Configuration ----------
-const char* WIFI_SSID1 = "FLA 2.4G";
-const char* WIFI_PASS1 = "20092009";
+const char* WIFI_SSID1 = "PTBA-LOGGER";
+const char* WIFI_PASS1 = "katekpasswordnyo";
 
-const char* WIFI_SSID2 = "PTBA-LOGGER";
-const char* WIFI_PASS2 = "katekpasswordnyo";
+const char* WIFI_SSID2 = "FLA 2.4G";
+const char* WIFI_PASS2 = "20092009";
 
 const char* WIFI_SSID3 = "PTBA-KERTAPATI";
 const char* WIFI_PASS3 = "Spirit7jutaton";
@@ -51,17 +51,17 @@ const char* WIFI_PASS4 = "getalifebro";
 
 // ---------- WiFi Networks List ----------
 WiFiCredential wifiList[] = {
-  {WIFI_SSID1, WIFI_PASS1, 0},   // Highest priority
+  {WIFI_SSID2, WIFI_PASS2, 0},   // Highest priority
   {WIFI_SSID4, WIFI_PASS4, 1},
-  {WIFI_SSID2, WIFI_PASS2, 2},
+  {WIFI_SSID1, WIFI_PASS1, 2},
   {WIFI_SSID3, WIFI_PASS3, 3}
 };
 const int WIFI_COUNT = sizeof(wifiList) / sizeof(wifiList[0]);
 
 // ---------- MQTT Broker Configuration ----------
-const char* MQTT_SERVER = "broker.avisha.id";   // Broker address (Avisha Broker) 103.127.97.247
+const char* MQTT_SERVER = "broker.avisha.id"; // Broker address (Avisha Broker) 103.127.97.247
 const int   MQTT_PORT   = 1883;               // Non-SSL port
-const int   MQTTS_PORT  = 8883;               // SSL port
+const int   MQTTS_PORT  = 8884;               // SSL port
 const int   WS_PORT     = 8083;               // Non-SSL port
 const int   WSS_PORT    = 8084;               // SSL port
 const char* MQTT_USER   = "lutpiii";          // MQTT Username
