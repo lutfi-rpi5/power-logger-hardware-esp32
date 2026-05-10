@@ -187,6 +187,8 @@ Yang Harus diperbaiki/diupdate adalah:
     - MQTT Connection Config (text Link to "MQTT Connection Config")
     - PZEM-004T Calibration (text Link to "PZEM-004T Calibration")
 
+    {HARDRESET EEPROM}
+
   e. page 1 [Config > Manage Known Network] HTML + CSS:
       tampilkan semua jaringan yang diketahui (EEPROM) dalam tabel dengan kolom dan terdapat text box untuk menambahkan jaringan baru di bawah table dan tombol add network untuk menyimpan jaringan baru ke EEPROM
               Manage Known Network
@@ -235,38 +237,4 @@ Yang Harus diperbaiki/diupdate adalah:
   - menu.h/cpp
   - webserver.h/.cpp
   - etc
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
