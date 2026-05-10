@@ -1,5 +1,7 @@
-project yang sudah jadi dan sudah rilis
+ini adalah project yang sudah jadi dan sudah rilis
 ini penjelasan project yang sekarang dan yang akan di update firmware nya
+saya lampirkan program yang akan di kembangkan di file Data_Logger_Monitor.rar
+
 Nama Project  : Data Logger 3 Phase
 
 Overview Alat (Hardware)      : konteksnya alat ini hanya berfungsi untuk akuisisi data dan mengirimkan ke mqtt broker (tidak melakukan data logger), data logger sdh ada unit website yang khusus menangani data logging yang datanya di ambil dari mqtt broker
