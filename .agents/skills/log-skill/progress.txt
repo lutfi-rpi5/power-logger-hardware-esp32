@@ -1,0 +1,12 @@
+# Progress Log — Power Logger Hardware ESP32
+
+## 2026/06/09
+
+### Kalibrasi & Post-Processing
+- [Modified] `Data_Logger_Mix_v2.0.0/calibration.cpp` — Full recompute P, S, Q, PF, Wh dari calibrated V/I; P diskalakan proporsional terhadap perubahan S, Wh diskalakan terhadap perubahan P, sehingga semua parameter (kecuali Hz) konsisten dengan segitiga daya setelah offset kalibrasi V/I.
+
+### Dokumentasi Lengkap (Batch 1-4)
+- [Modified] **Batch 1** — 17 header files: `config.h`, `types.h`, `diagnostics.h`, `calibration.h`, `json_builder.h`, `button_manager.h`, `led_signal.h`, `task_manager.h`, `wifi_manager.h`, `storage_manager.h`, `mqtt_manager.h`, `display_oled.h`, `menu_manager.h`, `data_acquisition.h`, `webserver_manager.h`, `credentials.h`, `credential_example.cpp` — Ditambahkan Doxygen `@file`, `@class`, `@brief`, `@param`, `@return`, `@note` pada setiap struct, enum, class, dan method declaration.
+- [Modified] **Batch 2** — 7 small implementation files: `diagnostics.cpp`, `button_manager.cpp`, `led_signal.cpp`, `task_manager.cpp`, `json_builder.cpp`, `calibration.cpp`, `wifi_manager.cpp` — Ditambahkan file header docs, inline komentar step-by-step, dokumentasi algoritma, guard conditions, dan magic number explanation.
+- [Modified] **Batch 3** — 3 medium implementation files: `data_acquisition.cpp`, `display_oled.cpp`, `menu_manager.cpp` — Ditambahkan dokumentasi lengkap: state machine diagram, layout reference (OLED), thread safety notes, rationalia untuk setiap keputusan desain.
+- [Modified] **Batch 4** — 4 large files: `storage_manager.cpp`, `mqtt_manager.cpp`, `webserver_manager.cpp`, `Data_Logger_Mix_v2.0.0.ino` — Ditambahkan dokumentasi: arsitektur dual-core, NVS key naming convention, MQTT 5-state machine diagram, HTML/CSS reference, watchdog & heap protection flow.

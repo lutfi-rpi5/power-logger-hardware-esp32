@@ -1,11 +1,46 @@
 #include "storage_manager.h"
 #include "diagnostics.h"
 
+/**
+ * @file storage_manager.cpp
+ * @brief NVS-backed persistent configuration storage via the Preferences library.
+ *
+ * All configuration data is stored in the "dlcfg" namespace in ESP32
+ * NVS (Non-Volatile Storage). Each section uses typed Preferences keys.
+ *
+ * Key naming convention:
+ * - WiFi SSID:  "ws0", "ws1", ... "ws4"
+ * - WiFi pass:  "wp0", "wp1", ... "wp4"
+ * - MQTT:       "mqtt_srv", "mqtt_port", "mqtt_user", etc.
+ * - Calibration: "cal_v0", "cal_v1", "cal_v2", "cal_i0", etc.
+ * - Thresholds:  "th_vlost", "th_vunder", "th_vover", "th_unbal"
+ * - AP:          "ap_ssid", "ap_pass"
+ *
+ * Each public method opens and closes the namespace to minimise NVS
+ * handle contention — ESP32 Preferences is not thread-safe.
+ */
+
 void StorageManager::_open(bool readOnly) const { _prefs.begin(PREF_NAMESPACE, readOnly); }
 void StorageManager::_close() const { _prefs.end(); }
+
+/**
+ * @brief Generate the Preferences key for a WiFi SSID at a given index.
+ * @param i  Index (0–MAX_WIFI_NETWORKS-1).
+ * @param buf Output buffer (min 16 chars). Receives e.g. "ws0".
+ */
 void StorageManager::_wifiSSIDKey(int i, char* buf) { snprintf(buf, 16, "ws%d", i); }
+
+/**
+ * @brief Generate the Preferences key for a WiFi password at a given index.
+ * @param i  Index (0–MAX_WIFI_NETWORKS-1).
+ * @param buf Output buffer (min 16 chars). Receives e.g. "wp0".
+ */
 void StorageManager::_wifiPassKey(int i, char* buf) { snprintf(buf, 16, "wp%d", i); }
 
+/**
+ * @brief Initialise the NVS subsystem.
+ * Opens and closes the namespace as a sanity check.
+ */
 void StorageManager::begin() {
     diag.info("STORAGE", "Initializing NVS...");
     _open();
@@ -13,6 +48,12 @@ void StorageManager::begin() {
     diag.info("STORAGE", "Ready. WiFi networks stored: %d", getWifiCount());
 }
 
+// ── WiFi Network List ────────────────────────────────────────────────
+
+/**
+ * @brief Get the count of stored WiFi networks.
+ * @return The stored count (key "wifi_count"), or 0 if not set.
+ */
 int StorageManager::getWifiCount() const {
     _open(true);
     int count = _prefs.getInt("wifi_count", 0);
@@ -20,6 +61,11 @@ int StorageManager::getWifiCount() const {
     return count;
 }
 
+/**
+ * @brief Get a WiFi network entry by index.
+ * @param index 0-based index.
+ * @return WiFiEntry struct. Empty strings if index is out of range.
+ */
 WiFiEntry StorageManager::getWifiEntry(int index) const {
     WiFiEntry entry = {};
     if (index < 0 || index >= MAX_WIFI_NETWORKS) return entry;
@@ -33,10 +79,16 @@ WiFiEntry StorageManager::getWifiEntry(int index) const {
     return entry;
 }
 
+/**
+ * @brief Add a network to the end of the WiFi list.
+ * @param ssid Network SSID.
+ * @param pass Network password.
+ * @return true on success, false if the list is full.
+ */
 bool StorageManager::addWifiEntry(const char* ssid, const char* pass) {
     int count = getWifiCount();
     if (count >= MAX_WIFI_NETWORKS) {
-        diag.warn("STORAGE", "WiFi list full");
+        diag.warn("STORAGE", "WiFi list full (%d max)", MAX_WIFI_NETWORKS);
         return false;
     }
     char sk[16], pk[16];
@@ -51,10 +103,21 @@ bool StorageManager::addWifiEntry(const char* ssid, const char* pass) {
     return true;
 }
 
+/**
+ * @brief Delete a WiFi entry by index.
+ *
+ * Shifts all subsequent entries up to fill the gap (cascade delete),
+ * then decrements the count and removes the last duplicated entry.
+ *
+ * @param index 0-based index to delete.
+ * @return true on success, false if index is out of range.
+ */
 bool StorageManager::deleteWifiEntry(int index) {
     int count = getWifiCount();
     if (index < 0 || index >= count) return false;
+
     _open();
+    // Shift entries left to fill the deletion gap
     for (int i = index; i < count - 1; i++) {
         char sk_cur[16], pk_cur[16], sk_next[16], pk_next[16];
         _wifiSSIDKey(i,   sk_cur);  _wifiPassKey(i,   pk_cur);
@@ -65,6 +128,7 @@ bool StorageManager::deleteWifiEntry(int index) {
         _prefs.putString(sk_cur, ssid);
         _prefs.putString(pk_cur, pass);
     }
+    // Remove the last (now-duplicated) entry
     char sk_last[16], pk_last[16];
     _wifiSSIDKey(count - 1, sk_last);
     _wifiPassKey(count - 1, pk_last);
@@ -76,6 +140,9 @@ bool StorageManager::deleteWifiEntry(int index) {
     return true;
 }
 
+/**
+ * @brief Remove all stored WiFi networks.
+ */
 void StorageManager::clearAllWifi() {
     int count = getWifiCount();
     _open();
@@ -90,6 +157,17 @@ void StorageManager::clearAllWifi() {
     _close();
 }
 
+// ── MQTT Configuration ──────────────────────────────────────────────
+
+/**
+ * @brief Load the MQTT configuration from NVS.
+ *
+ * If any field is empty in NVS, the corresponding default from
+ * config.h is substituted. This ensures the device always has
+ * valid configuration even on first boot or after factory reset.
+ *
+ * @return MQTTConfig struct with current or default values.
+ */
 MQTTConfig StorageManager::getMQTTConfig() const {
     MQTTConfig cfg = {};
     _open(true);
@@ -106,6 +184,8 @@ MQTTConfig StorageManager::getMQTTConfig() const {
     cfg.useWS   = _prefs.getBool("mqtt_ws",    DEFAULT_MQTT_USE_WS);
     _prefs.getString("mqtt_cert",  cfg.caCert,  sizeof(cfg.caCert));
     _close();
+
+    // Apply defaults for empty fields
     if (strlen(cfg.server) == 0) strncpy(cfg.server, DEFAULT_MQTT_SERVER, sizeof(cfg.server));
     if (strlen(cfg.user)   == 0) strncpy(cfg.user,   DEFAULT_MQTT_USER,   sizeof(cfg.user));
     if (strlen(cfg.pass)   == 0) strncpy(cfg.pass,   DEFAULT_MQTT_PASS,   sizeof(cfg.pass));
@@ -114,6 +194,10 @@ MQTTConfig StorageManager::getMQTTConfig() const {
     return cfg;
 }
 
+/**
+ * @brief Save the MQTT configuration to NVS.
+ * @param cfg MQTTConfig to persist.
+ */
 void StorageManager::saveMQTTConfig(const MQTTConfig& cfg) {
     _open();
     _prefs.putString("mqtt_srv",   cfg.server);
@@ -132,6 +216,12 @@ void StorageManager::saveMQTTConfig(const MQTTConfig& cfg) {
     diag.info("STORAGE", "MQTT config saved: %s:%d", cfg.server, cfg.port);
 }
 
+// ── Calibration Offsets ─────────────────────────────────────────────
+
+/**
+ * @brief Load calibration offsets from NVS.
+ * @return CalibrationConfig with per-phase V/I offsets.
+ */
 CalibrationConfig StorageManager::getCalibration() const {
     CalibrationConfig cfg = {};
     _open(true);
@@ -159,6 +249,8 @@ void StorageManager::saveCalibration(const CalibrationConfig& cfg) {
     diag.info("STORAGE", "Calibration saved.");
 }
 
+// ── AP Configuration ───────────────────────────────────────────────
+
 APConfig StorageManager::getAPConfig() const {
     APConfig cfg = {};
     _open(true);
@@ -176,6 +268,8 @@ void StorageManager::saveAPConfig(const APConfig& cfg) {
     _prefs.putString("ap_pass", cfg.pass);
     _close();
 }
+
+// ── Line Status Thresholds ─────────────────────────────────────────
 
 ThresholdConfig StorageManager::getThresholds() const {
     ThresholdConfig cfg = {};
@@ -199,14 +293,26 @@ void StorageManager::saveThresholds(const ThresholdConfig& cfg) {
         cfg.voltageLost, cfg.voltageUnder, cfg.voltageOver, cfg.unbalanceMax);
 }
 
+// ── Factory Reset ──────────────────────────────────────────────────
+
 void StorageManager::factoryReset() {
     diag.warn("STORAGE", "*** FACTORY RESET – clearing all NVS data ***");
     _open();
-    _prefs.clear();
+    _prefs.clear();  // Removes ALL keys in the "dlcfg" namespace
     _close();
     diag.info("STORAGE", "Factory reset complete. Please reboot.");
 }
 
+// ── Diagnostics Dump ───────────────────────────────────────────────
+
+/**
+ * @brief Log the entire configuration state at INFO level.
+ *
+ * Useful for debugging: shows WiFi list, MQTT config (without password),
+ * calibration offsets per phase, thresholds, and AP config.
+ *
+ * Password fields are omitted from the log for security.
+ */
 void StorageManager::dump() const {
     diag.info("STORAGE", "=== StorageManager Dump ===");
     int n = getWifiCount();

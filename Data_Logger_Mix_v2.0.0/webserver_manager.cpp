@@ -1,6 +1,21 @@
 #include "webserver_manager.h"
 #include "diagnostics.h"
 
+/**
+ * @file webserver_manager.cpp
+ * @brief Web configuration server with Soft-AP, HTTP Basic Auth, and HTML pages.
+ *
+ * Architecture:
+ * - Routes are registered at init (begin()), but the server does NOT start
+ *   until activate() is called from the OLED menu.
+ * - deactivate() stops both the HTTP server and the Soft-AP.
+ * - All HTML pages are generated on-the-fly as Strings (not pre-stored in
+ *   PROGMEM — flash usage is acceptable for this scale).
+ *
+ * CSS is embedded directly in _htmlHead() for single-file deployment.
+ * External CSS/JS files are NOT used to avoid SPIFFS/LittleFS dependency.
+ */
+
 WebServerManager::WebServerManager(StorageManager& storage)
     : _storage(storage), _server(80)
 {}
@@ -10,29 +25,41 @@ void WebServerManager::begin() {
     diag.info("WEB", "Routes registered. Server not active yet.");
 }
 
+/**
+ * @brief Activate the Soft-AP and start the HTTP server.
+ *
+ * 1. Reads AP SSID/password from NVS.
+ * 2. Sets WiFi to AP+STA mode (keeps client connection alive).
+ * 3. Configures the Soft-AP at 192.168.4.1/24.
+ * 4. Starts the HTTP server.
+ * 5. Updates gState with AP info for the OLED config screen.
+ */
 void WebServerManager::activate() {
     if (_active) return;
 
     APConfig ap = _storage.getAPConfig();
 
+    // Enable AP+STA dual mode (retain WiFi client connection)
     if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        delay(100);
+        delay(100);  // Allow mode switch to settle
     }
 
+    // Configure AP with static IP 192.168.4.1
     WiFi.softAPConfig(
         IPAddress(192, 168, 4, 1),
         IPAddress(192, 168, 4, 1),
         IPAddress(255, 255, 255, 0)
     );
-    WiFi.softAP(ap.ssid, ap.pass, 6, 0, 4);
-    delay(100);
+    WiFi.softAP(ap.ssid, ap.pass, 6, 0, 4);  // Channel 6, hidden=0, max_clients=4
+    delay(100);  // Allow AP to initialise
 
     diag.info("WEB", "AP started: %s  IP: %s", ap.ssid, WiFi.softAPIP().toString().c_str());
 
     _server.begin();
     _active = true;
 
+    // Update shared state for the OLED config screen
     updateState([&](SystemState& s) {
         s.webServerActive = true;
         strncpy(s.apSSID, ap.ssid, sizeof(s.apSSID));
@@ -43,10 +70,16 @@ void WebServerManager::activate() {
     diag.info("WEB", "HTTP server started on port 80");
 }
 
+/**
+ * @brief Deactivate the HTTP server and Soft-AP.
+ *
+ * Stops the server and disconnects the AP. Updates gState to reflect
+ * the inactive state so the OLED config screen updates immediately.
+ */
 void WebServerManager::deactivate() {
     if (!_active) return;
     _server.end();
-    WiFi.softAPdisconnect(true);
+    WiFi.softAPdisconnect(true);  // true = also disable AP mode
     _active = false;
     updateState([](SystemState& s) {
         s.webServerActive = false;
@@ -58,7 +91,7 @@ String WebServerManager::getIP() const {
     return _active ? WiFi.softAPIP().toString() : "";
 }
 
-// ─── Auth ──────────────────────────────────────────────────
+// ─── Auth ──────────────────────────────────────────────────────────
 
 bool WebServerManager::_authenticate(AsyncWebServerRequest* request) {
     return request->authenticate(WEB_USERNAME, WEB_PASSWORD);
@@ -70,14 +103,17 @@ void WebServerManager::_handleLogin(AsyncWebServerRequest* request) {
     request->send(resp);
 }
 
-// ─── Routes ────────────────────────────────────────────────
+// ─── Routes ────────────────────────────────────────────────────────
 
 void WebServerManager::_setupRoutes() {
+
+    // ── Home page ──────────────────────────────────────────────────
     _server.on("/", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (!_authenticate(req)) { _handleLogin(req); return; }
         req->send(200, "text/html", _pageIndex(_storage));
     });
 
+    // ── WiFi management ────────────────────────────────────────────
     _server.on("/wifi", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (!_authenticate(req)) { _handleLogin(req); return; }
         req->send(200, "text/html", _pageWifi(_storage));
@@ -100,6 +136,7 @@ void WebServerManager::_setupRoutes() {
         req->redirect("/wifi");
     });
 
+    // ── MQTT configuration ─────────────────────────────────────────
     _server.on("/mqtt", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (!_authenticate(req)) { _handleLogin(req); return; }
         req->send(200, "text/html", _pageMQTT(_storage));
@@ -126,10 +163,11 @@ void WebServerManager::_setupRoutes() {
         String ca  = get("cacert"); ca.toCharArray(cfg.caCert, sizeof(cfg.caCert));
 
         _storage.saveMQTTConfig(cfg);
-        if (onMQTTSaved) onMQTTSaved();
+        if (onMQTTSaved) onMQTTSaved();  // Trigger MQTT reconnect
         req->redirect("/mqtt");
     });
 
+    // ── Calibration & thresholds ───────────────────────────────────
     _server.on("/calibration", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (!_authenticate(req)) { _handleLogin(req); return; }
         req->send(200, "text/html", _pageCalibration(_storage));
@@ -146,7 +184,7 @@ void WebServerManager::_setupRoutes() {
                 cal.currentOffset[i] = req->getParam(iKeys[i], true)->value().toFloat();
         }
         _storage.saveCalibration(cal);
-        if (onCalibrationSaved) onCalibrationSaved();
+        if (onCalibrationSaved) onCalibrationSaved();  // DAQ reload
 
         ThresholdConfig thr = _storage.getThresholds();
         if (req->hasParam("th_vlost",  true)) thr.voltageLost  = req->getParam("th_vlost",  true)->value().toFloat();
@@ -154,11 +192,12 @@ void WebServerManager::_setupRoutes() {
         if (req->hasParam("th_vover",  true)) thr.voltageOver  = req->getParam("th_vover",  true)->value().toFloat();
         if (req->hasParam("th_unbal",  true)) thr.unbalanceMax = req->getParam("th_unbal",  true)->value().toFloat();
         _storage.saveThresholds(thr);
-        if (onThresholdSaved) onThresholdSaved();
+        if (onThresholdSaved) onThresholdSaved();  // DAQ reload
 
         req->redirect("/calibration");
     });
 
+    // ── Factory reset (Danger Zone) ────────────────────────────────
     _server.on("/factoryreset", HTTP_POST, [this](AsyncWebServerRequest* req) {
         if (!_authenticate(req)) { _handleLogin(req); return; }
         _storage.factoryReset();
@@ -166,17 +205,35 @@ void WebServerManager::_setupRoutes() {
         h += "<div class='card'><h2>Factory Reset Complete</h2><p>All settings erased. Device will reboot.</p></div>";
         h += _htmlFoot();
         req->send(200, "text/html", h);
-        delay(1000);
+        delay(1000);  // Allow HTTP response to be sent before reboot
         ESP.restart();
     });
 
+    // ── Captive portal redirect ────────────────────────────────────
+    // All unknown requests (common captive portal probes from Android/iOS/Windows)
+    // are redirected to the home page.
     _server.onNotFound([](AsyncWebServerRequest* req) {
         req->redirect("http://192.168.4.1/");
     });
 }
 
-// ─── HTML Helpers ─────────────────────────────────────────
+// ─── HTML Page Generators ──────────────────────────────────────────
 
+/**
+ * @brief Generate the HTML <head> section with embedded CSS and navigation.
+ *
+ * CSS features:
+ * - Light theme (white surface, green primary).
+ * - Mobile-responsive (max-width breakpoint at 640 px).
+ * - Cards with left green accent border.
+ * - Navigation pills at the top of every page.
+ *
+ * The CSS is intentionally embedded (not external) to avoid needing
+ * SPIFFS/LittleFS. Total overhead ~2 KB per page.
+ *
+ * @param title Page title (appears in browser tab).
+ * @return HTML string from <!DOCTYPE> through opening <body> tag.
+ */
 String WebServerManager::_htmlHead(const char* title) {
     return String(R"(<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
@@ -218,8 +275,6 @@ String WebServerManager::_htmlFoot() {
            FW_VERSION + R"( &bull; Muhammad Lutfi Nur Anendi</p></body></html>)";
 }
 
-// ─── Page: Login ───────────────────────────────────────────
-
 String WebServerManager::_pageLogin() {
     String h = _htmlHead("Login");
     h += R"(<div class='card'><h2>Authentication Required</h2>
@@ -227,8 +282,6 @@ String WebServerManager::_pageLogin() {
     h += _htmlFoot();
     return h;
 }
-
-// ─── Page: Index ──────────────────────────────────────────
 
 String WebServerManager::_pageIndex(StorageManager& s) {
     String h = _htmlHead("Config");
@@ -245,8 +298,6 @@ String WebServerManager::_pageIndex(StorageManager& s) {
     h += _htmlFoot();
     return h;
 }
-
-// ─── Page: WiFi ───────────────────────────────────────────
 
 String WebServerManager::_pageWifi(StorageManager& s) {
     String h = _htmlHead("Manage WiFi");
@@ -272,8 +323,6 @@ String WebServerManager::_pageWifi(StorageManager& s) {
     h += _htmlFoot();
     return h;
 }
-
-// ─── Page: MQTT ───────────────────────────────────────────
 
 String WebServerManager::_pageMQTT(StorageManager& s) {
     MQTTConfig cfg = s.getMQTTConfig();
@@ -313,8 +362,6 @@ String WebServerManager::_pageMQTT(StorageManager& s) {
     h += _htmlFoot();
     return h;
 }
-
-// ─── Page: Calibration + Thresholds ──────────────────────
 
 String WebServerManager::_pageCalibration(StorageManager& s) {
     CalibrationConfig cal = s.getCalibration();
