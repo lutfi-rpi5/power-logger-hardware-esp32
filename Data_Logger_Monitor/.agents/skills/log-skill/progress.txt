@@ -1,0 +1,56 @@
+## Session: 2026-06-08 22:30
+
+### Task: Rewrite README.md comprehensively
+- **File:** Data_Logger_Mix_v2.0.0/README.md (817 lines)
+- **Description:** Rewrote from bare-minimum to full documentation covering all features:
+  - Hardware/software requirements, pinout, wiring
+  - Firmware architecture (dual-core FreeRTOS + mutex)
+  - MQTT JSON schema with field descriptions
+  - OLED display (3 monitoring pages + menu system)
+  - Web interface (pages, login, captive portal)
+  - Calibration system (additive offset, derived params)
+  - Fake data mode, diagnostics system
+  - Voltage unbalance calculation (NEMA method)
+  - Non-blocking design (WiFi, MQTT 5-state machine)
+  - Self-healing (WDT, heap guard)
+  - Full file reference and troubleshooting guide
+- **Status:** done
+
+
+### Task: Replace boot screen with animated progress bar version
+- **Files modified:**
+  - `config.h` — added `BOOT_DURATION_MS` (3000)
+  - `display_oled.h` — `drawBoot()` signature changed to `(int progressPercent, const char* msg)`
+  - `display_oled.cpp` — `drawBoot()` redesigned with progress bar + percentage text; `begin()` updated call
+  - `Data_Logger_Mix_v2.0.0.ino` — removed synchronous `drawBoot()` + `delay(600)` in setup, added `_handleBoot()` in loop for 3s animated progress bar
+- **Layout:** Title, separator, version, status message, progress bar (rect 108x10), percentage right-aligned, github credit
+- **Status:** done
+
+
+### Task: Revise MQTT web config + fix connection
+- **Files modified:**
+  - `storage_manager.h` — added `prefix[64]` to MQTTConfig struct
+  - `storage_manager.cpp` — save/load `mqtt_pref` key, dump now shows prefix+topic
+  - `config.h` — added `DEFAULT_MQTT_PREFIX "lutpiii"`, changed `DEFAULT_MQTT_TOPIC` from "" to "telemetry"
+  - `mqtt_manager.h` — added `_resolvePort()` declaration
+  - `mqtt_manager.cpp`:
+    - Added `_resolvePort()`: selects port based on useSSL+useWS (port/sslPort/wsPort/wssPort)
+    - Topic construction: `prefix/topic/device_id` (program adds "/", no user input needed)
+    - Better MQTT_CONNECTING diagnostics: logs `_mqtt.state()` on failure
+  - `webserver_manager.cpp` — complete rewrite:
+    - CSS: replaced dark theme (#1a1a2e) with light theme (my version: #f7f8fa, #16a34a green)
+    - MQTT form: 4 port fields (MQTT, MQTTS, WS, WSS)
+    - Split into `prefix` + `topic` fields with auto-slash hint
+    - Cleaner card-based layout like my version
+- **MQTT connection fix:** Port now correctly selects wsPort/wssPort when useWS=true; immediate cooldown on `_mqtt.state() < 0` (was waiting for timeout)
+- **Status:** done
+
+
+### Task: Fix MQTT port selection (WS/WSS/MQTTS)
+- **Problem:** `_resolvePort()` included wsPort/wssPort for connection, but PubSubClient only supports raw TCP (not WebSocket protocol). UseWS checkbox was misleading.
+- **Fix:** `_resolvePort()` now only uses `port`/`sslPort` based on `useSSL`. WS/WSS fields kept in web form as reference.
+- **Changes:**
+  - `mqtt_manager.cpp`: simplified `_resolvePort()`, added SSL `lastError` logging on TCP fail
+  - `webserver_manager.cpp`: removed `useWS` checkbox, added hints explaining WS/WSS are reference-only
+- **Status:** done
+

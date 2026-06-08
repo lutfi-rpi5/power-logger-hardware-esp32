@@ -77,50 +77,76 @@ LED     2
 Yang Harus diperbaiki/diupdate adalah:
 1. Semua bagian sistem dan fungsi harus FULL asynchronous task/non blocking system kalau perlu gunakan dua core esp32 atau gunakan FreeRTOS
 2. [hardcode & webpage config] sentralisasi semua config dalam 1 file config.h dan pisahkan section config yang hardcoded (hanya bisa diakses oleh programmer lewat program) dan config yang bisa diakses/modifikasi lewat webpage/webserver esp32
-3. [Publish Data] Ubah Metode Publish data dari yang Publish data langsung per topic ke broker menjadi kirim data json ke broker dengan topic {PREFIX_TOPIC/MQTT_TOPIC} (prefix dan topic diambil dari eeprom berdasarkan configurasi web config) (buatlah file json yang proper dan rapi dengan parameter yang lengkap dan mudah di parsing di backend node.js)
-  struktur json harus seperti ini
+3. [Publish Data] Ubah Metode Publish data dari yang Publish data langsung per topic ke broker menjadi kirim data json ke broker dengan topic hierarchical `{PREFIX_TOPIC}/{MQTT_TOPIC}/{DEVICE_ID}` (prefix dan topic diambil dari eeprom berdasarkan configurasi web config)
+  buatlah file json yang proper dan rapi dengan parameter yang lengkap dan mudah di parsing di backend node.js
+
+  **Topik MQTT:** `lutpiii/telemetry/{device_id}` (hierarchical, bukan flat)
+  Backend subscribe ke `lutpiii/telemetry/+` untuk menerima data dari semua device.
+
+  **Final Schema JSON (v2.0.0):**
   ```json
 {
+  "seq": 1247,
   "device": {
-    "id":     "3ph-logger-001",   → DEVICE_ID dari config.h
-    "fw":     "v2.1.0",           → FW_VERSION dari config.h
-    "uptime": 3600,               → detik sejak boot (uint32)
-    "heap":   148432,             → free heap bytes
-    "rssi":   -65                 → sinyal WiFi dBm
+    "id":     "3ph-logger-001",
+    "fw":     "v2.1.0",
+    "uptime": 3600,
+    "heap":   148432,
+    "rssi":   -65
   },
   "phases": {
-    "R": {   → valid = true
-      "v":      "220.1",      → voltage (V), 1 desimal
-      "i":      "12.34",      → current (A), 2 desimal
-      "p":      "2650.0",     → active power (W)
-      "s":      "2714.6",     → apparent power (VA)
-      "q":      "582.1",      → reactive power (VAr) = √(S²-P²)
-      "pf":     "0.97",       → power factor (0.0–1.0), 2 desimal
-      "f":      "50.0",       → frequency (Hz)
-      "e":      "15230.0",    → energy kumulatif (Wh)
-      "status": "OK"          → "OK" / "UNDER" / "OVER" / "LOST"
+    "R": {
+      "valid":  true,
+      "v":      220.1,
+      "i":      12.34,
+      "p":      2650.0,
+      "s":      2714.6,
+      "q":      582.1,
+      "pf":     0.97,
+      "f":      50.0,
+      "e":      15230.0,
+      "status": "OK"
     },
-    "S": {   → valid = true
-      "v":      "200.6",
-      "i":      "12.34",
-      "p":      "2650.0",
-      "s":      "2714.6",
-      "q":      "582.1",
-      "pf":     "0.97",
-      "f":      "50.0",
-      "e":      "15230.0",
+    "S": {
+      "valid":  true,
+      "v":      200.6,
+      "i":      12.34,
+      "p":      2650.0,
+      "s":      2714.6,
+      "q":      582.1,
+      "pf":     0.97,
+      "f":      50.0,
+      "e":      15230.0,
       "status": "UNDER"
     },
-    "T": {   → valid = false → early return
-      "status": "LOST" → jika salah satu atau lebih dari 1 fasa mengalami lost voltage maka esp32 hanya akan mengirimkan status "LOST" saja
-    },
-    "unbalance": {
-      "value": "4.25"
+    "T": {
+      "valid":  false,
+      "v":      0.0,
+      "i":      0.0,
+      "p":      0.0,
+      "s":      0.0,
+      "q":      0.0,
+      "pf":     0.0,
+      "f":      0.0,
+      "e":      0.0,
+      "status": "LOST"
     }
   },
-  "ts": 3601234  → millis() saat publish, bukan Unix time
+  "unbalance": 4.25,
+  "ts": 1717001234
 }
 ```
+
+  **Perubahan dari JSON versi awal:**
+
+  | Aspek | Sebelum | Sesudah | Alasan |
+  |---|---|---|---|
+  | Topic | `lutpiii/telemetry` (flat) | `lutpiii/telemetry/{device_id}` (hierarchical) | Backend filter by device via MQTT routing |
+  | Numeric values | String `"220.1"` | Number `220.1` | Backend langsung pakai, payload lebih kecil |
+  | Schema phase invalid | Parsial (hanya `status`) | Full schema + `valid: false` | Satu parser untuk semua kondisi |
+  | `ts` | `millis()` lokal device | Unix epoch seconds (dari NTP) | Waktu absolut untuk sorting/graphing antar device |
+  | `unbalance` | String `"4.25"` | Number `4.25` | Backend langsung pakai sebagai number |
+  | `seq` | Tidak ada | `uint32` increment setiap publish | Deteksi missed message / data gap |
 4. [Bug] perbaiki bug blocking saat booting yang mengharuskan sistem terkoneksi ke access point wi-fi atau mqtt dulu baru bisa masuk ke sistem (tetap buat opening screen OLED dengan Loading bar progress nya)
     seharusnya sistem terus berjalan meskipun:
     a. tidak terhubung ke wi-fi dan/atau mqtt, atau
@@ -129,7 +155,7 @@ Yang Harus diperbaiki/diupdate adalah:
     #define VOLTAGE_OK_MIN      180.0f  // Below this → UNDER
     #define VOLTAGE_LOST_MAX    80.0f   // Below this → LOST
     #define VOLTAGE_OVER_MAX    240.0f  // Above this → OVER
-7. [Tambah] tambahkan parameter unbalanced antar phase berdasarkan standard di indonesia, masukkan fungsi di DataAcquisition.h/.cpp
+6. [Tambah] tambahkan parameter unbalanced antar phase berdasarkan standard di indonesia, masukkan fungsi di DataAcquisition.h/.cpp
         ALGORITMA HITUNG VOLTAGE UNBALANCE 3 PHASE
         Input:
             VR = Tegangan phase R ke netral
@@ -178,8 +204,8 @@ Yang Harus diperbaiki/diupdate adalah:
         HASIL:
             Voltage Unbalance = 4.25%
 
-8. [Display] upgrade tampilan OLED 0.96" (128x64 pixel) SSD1306 dengan tampilan dan menu yang lebih flexible
-  5a. Rule set Display:
+7. [Display] upgrade tampilan OLED 0.96" (128x64 pixel) SSD1306 dengan tampilan dan menu yang lebih flexible
+  Rule set Display:
     - display OLED 0.96" SSD1306 sepenuhnya dikontrol dengan 1 push button
     - kuncinya cuma ada 2     : 1. jika push button di tekan dengan interval biasa maka itu untuk mengganti page/memindahkan kursor menu ">"
                                 2. jika push button di tekan dengan interval 2 detik (customable webpage config) maka itu untuk melakukan "Enter" pada menu yang di pilih atau khususnya pada Monitoring Mode adalah untuk berpindah ke Menu Mode
@@ -321,19 +347,19 @@ Yang Harus diperbaiki/diupdate adalah:
  *   │                            │  
  *   └────────────────────────────┘
 
-9. [HTTP Web-server & Access Point] 
+8. [HTTP Web-server & Access Point] 
   a. buat webpage config yang bisa diakses lewat smartphone atau laptop yang terhubung melalui IP Address yang ESP32 keluarkan saat Config pada Menu Mode "Active"
   b. jika saat access point aktif dan ESP32 sedang terhubung ke jaringan yang ada internetnya, maka teruskan internet itu ke access point ESP32 agar Laptop/smartphone yang sedang melakukan config/terhubung ke access point esp32 mendapatkan jaringan internet untuk tetap online (jika tidak, Laptop/smartphone tidak apa-apa dalam kondisi offline) 
   c. semua parameter config yang ada di webpage tersimpan di dalam EEPROM ESP32 (jadi device baru harus config terlebih dahulu untuk terkoneksi ke internet/MQTT)
   d. buatkan login page sebelum masuk ke main page config, dengan user dan pass yang hanya bisa diubah di hardcode config.h, dengan default USERNAME = ADMIN, PASS = 18273645
-  d. page 1 [Config] HTML + CSS:
+  e. page 1 [Config] HTML + CSS:
     - Manage Known Network   (Big/Medium Card with Link to "Manage Known Network")
     - MQTT Connection Config (Big/Medium Card with Link to "MQTT Connection Config")
     - PZEM-004T Calibration  (Big/Medium Card with Link to "PZEM-004T Calibration")
 
     {HARDRESET EEPROM}
 
-  e. page 1 [Config > Manage Known Network] HTML + CSS:
+  f. page 1 [Config > Manage Known Network] HTML + CSS:
       tampilkan semua jaringan yang diketahui (EEPROM) dalam tabel dengan kolom dan terdapat text box untuk menambahkan jaringan baru di bawah table dan tombol add network untuk menyimpan jaringan baru ke EEPROM
               Manage Known Network
 
@@ -347,7 +373,7 @@ Yang Harus diperbaiki/diupdate adalah:
 
       {ADD NETWORK}
 
-  e. page 2 [Config > MQTT Connection Config] HTML + CSS:
+  g. page 2 [Config > MQTT Connection Config] HTML + CSS:
       tampilkan data koneksi MQTT dalam bentuk teks dari EEPROM
       MQTT Server = broker.avisha.id
       MQTT_PORT   = 1883               // Non-SSL port
@@ -369,13 +395,13 @@ Yang Harus diperbaiki/diupdate adalah:
       // jika WS=1 & SSL=0 gunakan WS
       // jika WS=1 & SSL=1 gunakan WSS
 
-  f. page 3 [Config > PZEM-004T Calibration] HTML + CSS:
+  h. page 3 [Config > PZEM-004T Calibration] HTML + CSS:
       buat kalibrasi dengan model offset (-/+) untuk parameter Voltage & Current masing-masing Fasa dengan presisi 0.000 perubahan, threshold LOST, UNDER, OVER dan unbalance. dan tampilkan juga offset yang tersimpan
       dengan model text box
 
       {SAVE CALIBRATION}
 
-  g. gunakan saja template yang sudah saya buat ini, namun bagusin lagi homa page bagian text link nya, jgn pakai text link lagi, gunakan card medium atau besar ke bawah saja susunannya, jumlah card = jumlah menu
+  i. gunakan saja template yang sudah saya buat ini, namun bagusin lagi homa page bagian text link nya, jgn pakai text link lagi, gunakan card medium atau besar ke bawah saja susunannya, jumlah card = jumlah menu
 String WebServerManager::_htmlHead(const char* title) {
 return String(R"(<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
@@ -756,29 +782,43 @@ String WebServerManager::_pageCalibration(StorageManager& s) {
 }
  
 
-6. [IMPORTANT!!!] sistem ini memiliki kalibrasi untuk TEGANGAN & ARUS PZEM, maka harus ada post processing untuk parameter lainnya seperti VA, VAr, W, Wh, dan pf (kecuali Hz) yang mana nilainya bergantung/yang nilainya berubah berdasarkan parameter tegangan atau arus,
-    yang mana jika hanya melakukan kalibrasi pada V / A tetapi parameter lain tidak terpengaruh maka data akan salah total seperti VA, VAr, W, Wh, dan pf (kecuali Hz)
-    jadi parameter lain harus terpengaruh/ikut terproses setelah tegangan atau arus dilakukan kalibrasi ataupun tidak, jadi semua parameter kecuali frequency harus berubah sesuai offset kalibarsi tegangan atau Arus
+9. [IMPORTANT!!!] Kalibrasi Tegangan & Arus PZEM harus mempengaruhi semua parameter turunan (VA, VAr, W, Wh, PF kecuali Hz). Karena parameter lain bergantung pada V dan I, maka setelah kalibrasi offset V/I, semua parameter hitung ulang agar konsisten.
 
-6. [Tambah] di web config, tambahkan config untuk nilai LOST, UNDER, OVER voltage, serta persentase max unbalance phase di halaman PZEM Calibration
+10. [Tambah] di web config, tambahkan config untuk nilai LOST, UNDER, OVER voltage, serta persentase max unbalance phase di halaman PZEM Calibration
     #define VOLTAGE_OK_MIN      180.0f  // Below this → UNDER
     #define VOLTAGE_LOST_MAX    80.0f   // Below this → LOST
     #define VOLTAGE_OVER_MAX    240.0f  // Above this → OVER
     #define VOLTAGE_UNBALANCE_MAX    3.0f  // Above this → OVER UNBALANCE (satuan persen)
 
-7. LED Signal 
+11. LED Signal 
   - sebagai indikator terhadap aksi-aksi dari fungsi/module program seperti Booting, Reset kWh, active/deactive webserver, dll.
 
-8. [Tambah] tambahkan fitur auto self-healing ketika esp32 mengalami freeze/hang/stuck/runningout memory atau sejenisnya atau sesuatu yang membuat esp32 malfungsi sistem, maka harus ditambahkan self healing dengan metode yang paling cocok untuk sistem ini
+12. [Tambah] tambahkan fitur auto self-healing ketika esp32 mengalami freeze/hang/stuck/runningout memory atau sejenisnya atau sesuatu yang membuat esp32 malfungsi sistem, maka harus ditambahkan self healing dengan metode yang paling cocok untuk sistem ini
 
-8. Struktur File Project gunakan OOP dan seperti ROS2 (Robot Operating System 2) dengan dokumentasi-dokumentasi melimpahnya dan program mudah dipahami, mudah di konfigurasi, dan bisa scalable saat penambahan fitur/sensor baru
+13. Struktur File Project gunakan OOP dan seperti ROS2 (Robot Operating System 2) dengan dokumentasi-dokumentasi melimpahnya dan program mudah dipahami, mudah di konfigurasi, dan bisa scalable saat penambahan fitur/sensor baru
   (jumlah file menyesuaikan, ini hanya sebagai contoh):
   - main.ino
   - config.h
   - data_acquisition.h/.cpp
   - calibration.h/.cpp
-  - display.h/cpp
-  - menu.h/cpp
+  - display.h/.cpp
+  - menu.h/.cpp
   - webserver.h/.cpp
-  - etc
+  - types.h
+  - system_state.h
+  - task_manager.h/.cpp
+  - wifi_manager.h/.cpp
+  - mqtt_manager.h/.cpp
+  - json_builder.h/.cpp
+  - storage_manager.h/.cpp
+  - led_manager.h/.cpp
+  - diagnostics.h/.cpp
+  - dll
+
+### Catatan untuk Backend Multi-Device (JSON Parser)
+1. Subscribe ke `lutpiii/telemetry/+` (wildcard) untuk menerima data dari semua device
+2. Indexing data berdasarkan `device.id` + `ts` (Unix timestamp) untuk query perangkat per periode waktu
+3. Gunakan field `seq` untuk mendeteksi apakah ada data terlewat (cek gap sequence tiap device)
+4. Field `valid` pada tiap phase memberi tahu bahwa data phase tersebut bisa diabaikan (tanpa perlu conditional parsing)
+5. Jika ESP32 belum sync NTP, kirim nilai `ts = 0` dan backend fallback ke MQTT broker timestamp
 
