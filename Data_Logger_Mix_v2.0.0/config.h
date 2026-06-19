@@ -17,7 +17,7 @@
 // ======================================================================
 // HARDWARE PIN ASSIGNMENTS (ESP32 DevKit V1 30-pin)
 // ======================================================================
-// PZEM-004T v3.0 uses 5V TTL serial at 115200 baud.
+// PZEM-004T v3.0 uses 3.3V TTL serial at 115200 baud.
 // UART1 is shared by phases R and S; each has a unique Modbus address.
 // UART2 is dedicated to phase T.
 #define PIN_PZEM_RX1        4   ///< UART1 RX pin (GPIO4)  — shared by PZEM R & S
@@ -47,7 +47,7 @@
 /// @name User Input & Indicator
 /// @{
 #define PIN_BUTTON          5  ///< Push button GPIO (NO, INPUT_PULLUP). Short=<600ms, Long=≥600ms
-#define PIN_LED             2  ///< Built-in LED GPIO (active HIGH). Used for status patterns
+#define PIN_LED             18  ///< Built-in LED GPIO (active HIGH). Used for status patterns
 /// @}
 
 // ======================================================================
@@ -77,7 +77,7 @@
 // FIRMWARE IDENTITY
 // ======================================================================
 #define FW_VERSION          "v2.1.0"  ///< Human-readable firmware version string
-#define DEVICE_ID           "3ph-logger-001" ///< Unique device identifier used in MQTT and logging
+#define DEVICE_ID           "3ph-logger-002" ///< Unique device identifier used in MQTT and logging 3ph-logger-xxx
 
 // ======================================================================
 // FreeRTOS TASK CONFIGURATION
@@ -138,7 +138,7 @@
 // ======================================================================
 // DEVELOPMENT & DEBUGGING
 // ======================================================================
-#define FAKE_DATA_ENABLED   true  ///< Enable synthetic PZEM data for testing without hardware.
+#define FAKE_DATA_ENABLED   false  ///< Enable synthetic PZEM data for testing without hardware.
                                    ///< Set to false for production deployment with real PZEM sensors.
 
 // ======================================================================

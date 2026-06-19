@@ -110,14 +110,15 @@ void DataAcquisition::_taskFn(void* param) {
         self->readOnce();           // Read all 3 PZEM or generate fake data
 
         // ── Compute unbalance from the just-updated state ────────────
+        // Uses actual calibrated voltage values regardless of valid flag.
+        // Phases with 0 V (PZEM communicating but no load) are included
+        // so a missing phase correctly registers as unbalanced.
         SystemState snap = getStateCopy();
-        float vR = snap.phases[0].valid ? snap.phases[0].voltage : 0.0f;
-        float vS = snap.phases[1].valid ? snap.phases[1].voltage : 0.0f;
-        float vT = snap.phases[2].valid ? snap.phases[2].voltage : 0.0f;
-        float unbal = _computeUnbalance(vR, vS, vT,
-                                         snap.phases[0].valid,
-                                         snap.phases[1].valid,
-                                         snap.phases[2].valid);
+        float unbal = _computeUnbalance(
+            snap.phases[0].voltage,
+            snap.phases[1].voltage,
+            snap.phases[2].voltage
+        );
         float unbalMax = self->_thresholds.unbalanceMax;
 
         // ── Update shared state with aggregate data ─────────────────
@@ -158,7 +159,7 @@ void DataAcquisition::readOnce() {
         float v  = _pzems[i].voltage();
         float a  = _pzems[i].current();
         float p  = _pzems[i].power();
-        float e  = _pzems[i].energy();
+        float e  = _pzems[i].energy()*1000;
         float pf = _pzems[i].pf();
         float f  = _pzems[i].frequency();
         float va = (isnan(v) || isnan(a)) ? NAN : v * a;
@@ -261,42 +262,40 @@ LineStatus DataAcquisition::_computeStatus(float voltage) const {
     return LineStatus::OK;
 }
 
-/**
- * @brief Compute voltage unbalance using the NEMA MG-1 method.
- *
- * Standard: NEMA MG-1 Section 14.36 / IEEE Std 141.
- * Used by SPLN (Indonesia) for three-phase supply quality.
- *
- * Note: If any phase is marked invalid, returns 0.0 to avoid
- * misleading unbalance calculations from missing data.
- *
- * @param vR Voltage phase R (V)
- * @param vS Voltage phase S (V)
- * @param vT Voltage phase T (V)
- * @param validR Phase R validity (must be true for all three)
- * @param validS Phase S validity
- * @param validT Phase T validity
- * @return Unbalance percentage, or 0.0 if any phase is invalid.
- */
-float DataAcquisition::_computeUnbalance(float vR, float vS, float vT,
-                                          bool validR, bool validS, bool validT)
-{
-    // Require all phases valid for a meaningful unbalance calculation
-    if (!validR || !validS || !validT) return 0.0f;
-
-    float vAvg = (vR + vS + vT) / 3.0f;
-    // Guard against division by zero (all phases at 0 V)
-    if (vAvg < 1.0f) return 0.0f;
-
-    float devR = fabsf(vR - vAvg);
-    float devS = fabsf(vS - vAvg);
-    float devT = fabsf(vT - vAvg);
-    float maxDev = devR;
-    if (devS > maxDev) maxDev = devS;
-    if (devT > maxDev) maxDev = devT;
-
-    return (maxDev / vAvg) * 100.0f;
-}
+    /**
+     * @brief Compute voltage unbalance using the NEMA MG-1 method.
+     *
+     * Standard: NEMA MG-1 Section 14.36 / IEEE Std 141.
+     * Used by SPLN (Indonesia) for three-phase supply quality.
+     *
+     * Unlike the previous implementation, this function does NOT require
+     * all three phases to have valid=true. Phases with 0 V (e.g. a PZEM
+     * that is communicating but has no voltage input) are included in the
+     * calculation so that a missing phase correctly shows as unbalanced.
+     *
+     * Only returns 0.0 when all three voltages are below 1 V (no
+     * meaningful data on any phase).
+     *
+     * @param vR Voltage phase R (V)
+     * @param vS Voltage phase S (V)
+     * @param vT Voltage phase T (V)
+     * @return Unbalance percentage (0.0–200.0).
+     */
+    float DataAcquisition::_computeUnbalance(float vR, float vS, float vT)
+    {
+        float vAvg = (vR + vS + vT) / 3.0f;
+        // Guard against division by zero (all phases at 0 V)
+        if (vAvg < 1.0f) return 0.0f;
+    
+        float devR = fabsf(vR - vAvg);
+        float devS = fabsf(vS - vAvg);
+        float devT = fabsf(vT - vAvg);
+        float maxDev = devR;
+        if (devS > maxDev) maxDev = devS;
+        if (devT > maxDev) maxDev = devT;
+    
+        return (maxDev / vAvg) * 100.0f;
+    }
 
 /**
  * @brief Reset cumulative energy counters on all three PZEM modules.

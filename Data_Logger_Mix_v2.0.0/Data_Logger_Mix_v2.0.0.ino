@@ -382,6 +382,28 @@ static void _wireCallbacks() {
         diag.info("MAIN", "Thresholds updated → reloading DAQ thresholds.");
         daq.reloadThresholds();
     };
+
+    // ── MQTT: Command handler (reboot / reset_energy) ──────────────
+    mqttMgr.setCommandCallback([&](const String& cmd, const String& phase) {
+        if (cmd == "reboot") {
+            diag.info("MAIN", "MQTT cmd: REBOOT received — restarting in 1s.");
+            delay(1000);
+            ESP.restart();
+        }
+        else if (cmd == "reset_energy") {
+            diag.info("MAIN", "MQTT cmd: RESET ENERGY (phase=%s)", phase.c_str());
+            if (phase == "all" || phase.length() == 0) {
+                led.play(LEDSignal::Pattern::RESET_KWH);
+                bool ok = daq.resetAllEnergy();
+                diag.info("MAIN", "Reset energy result: %s", ok ? "OK" : "FAIL");
+            } else {
+                diag.warn("MAIN", "Unknown phase '%s' — only 'all' supported.", phase.c_str());
+            }
+        }
+        else {
+            diag.warn("MAIN", "MQTT cmd: unknown command '%s'", cmd.c_str());
+        }
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════

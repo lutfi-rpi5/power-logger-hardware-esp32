@@ -16,17 +16,17 @@
  *                               ▼
  *                    ┌─────────────────────┐
  *                    │      MENU_MAIN      │
- *                    │  4 items (cursor 0-3)│
+ *                    │ 4 items (cursor 0-3)│
  *                    └──┬──┬──┬──┬─────────┘
  *           cursor=0 ───┘  │  │  └── long press → back to MONITORING
  *        cursor=1 ─────────┘  └─── cursor=2
  *                  ▼                 ▼
  *        ┌──────────────┐  ┌───────────────────┐
  *        │ MENU_CONFIG  │  │  MENU_REBOOT      │
- *        │ toggle AP    │  │  confirm/countdown │
+ *        │ toggle AP    │  │ confirm/countdown │
  *        └──────────────┘  └───────────────────┘
  *                  ▼                 ▼
- *        ┌──────────────────┐  ┌───────────────────────┐
+ *        ┌─────────────────┐  ┌───────────────────────┐
  *        │ MENU_RESET_KWH  │  │ MENU_REBOOT_CDOWN     │
  *        │ confirm → result│  │ 3-2-1-0 → ESP.restart │
  *        └─────────────────┘  └───────────────────────┘

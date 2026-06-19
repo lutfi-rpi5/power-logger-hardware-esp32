@@ -327,9 +327,9 @@ Backend subscribes to `+/telemetry/+` (wildcard) to receive data from all device
       "f": 0.0,
       "e": 0.0,
       "status": "LOST"
-    }
+    },
+    "unbalance": 4.25
   },
-  "unbalance": 4.25,
   "ts": 1717001234
 }
 ```

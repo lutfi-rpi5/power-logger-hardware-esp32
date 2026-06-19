@@ -120,18 +120,16 @@ private:
      * max_dev = max(|V_R - V_avg|, |V_S - V_avg|, |V_T - V_avg|)
      * unbalance = (max_dev / V_avg) × 100
      *
-     * Returns 0.0 if any phase is invalid or V_avg < 1.0 V.
+     * Phases with 0 V (no load or sensor connected) are included in the
+     * calculation. Only returns 0.0 if all three voltages are below 1 V
+     * (no meaningful data on any phase).
      *
      * @param vR Voltage phase R (V)
      * @param vS Voltage phase S (V)
      * @param vT Voltage phase T (V)
-     * @param validR Validity flag for phase R
-     * @param validS Validity flag for phase S
-     * @param validT Validity flag for phase T
-     * @return Unbalance percentage.
+     * @return Unbalance percentage (0.0–200.0).
      */
-    static float _computeUnbalance(float vR, float vS, float vT,
-                                    bool validR, bool validS, bool validT);
+    static float _computeUnbalance(float vR, float vS, float vT);
 
     /**
      * @brief Process a single phase reading: calibrate and write to gState.

@@ -5,6 +5,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <functional>
 #include "config.h"
 #include "types.h"
 #include "storage_manager.h"
@@ -45,6 +46,15 @@
  * Supports both plain TCP and SSL/TLS connections with optional CA
  * certificate verification.
  */
+/**
+ * @brief Callback type for MQTT command messages.
+ * Receives parsed command name and optional phase argument.
+ *
+ * @param cmd   Command string ("reboot", "reset_energy")
+ * @param phase Phase argument ("all" or empty string)
+ */
+using MqttCommandCallback = std::function<void(const String& cmd, const String& phase)>;
+
 class MQTTManager {
 public:
     /**
@@ -81,6 +91,16 @@ public:
      * Triggers a full disconnect followed by a fresh connection cycle.
      */
     void reloadConfig();
+
+    /**
+     * @brief Register a callback for MQTT command messages.
+     *
+     * The callback is invoked when a JSON command is received on the
+     * command topic (prefix/cmd/DEVICE_ID).
+     *
+     * @param cb Callable with signature void(const String& cmd, const String& phase)
+     */
+    void setCommandCallback(MqttCommandCallback cb);
 
 private:
     StorageManager&   _storage;  ///< NVS storage for MQTT config
@@ -173,4 +193,32 @@ private:
      * @param state Current SystemState snapshot to publish.
      */
     void    _publishTelemetry(const SystemState& state);
+
+    // ── MQTT Command Subscription ─────────────────────────────────────
+
+    /**
+     * @brief Subscribe to the command topic (prefix/cmd/DEVICE_ID).
+     * Called once after MQTT connects successfully.
+     */
+    void _subscribeToCmd();
+
+    /**
+     * @brief Instance method to handle an incoming MQTT message.
+     * Parses JSON and dispatches to _cmdCallback if registered.
+     *
+     * @param topic   The MQTT topic string.
+     * @param payload Raw payload bytes.
+     * @param length  Payload length in bytes.
+     */
+    void _onMqttMessage(char* topic, byte* payload, unsigned int length);
+
+    /**
+     * @brief Static callback wrapper for PubSubClient.
+     * Dispatches to the singleton _instance's _onMqttMessage().
+     */
+    static void _staticMqttCallback(char* topic, byte* payload, unsigned int length);
+
+    MqttCommandCallback _cmdCallback = nullptr;  ///< Registered command handler
+    static MQTTManager* _instance;               ///< Singleton pointer for static callback
+    bool                _cmdSubscribed = false;   ///< True after first subscribe to cmd topic
 };

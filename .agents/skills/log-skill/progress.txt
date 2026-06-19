@@ -10,3 +10,12 @@
 - [Modified] **Batch 2** — 7 small implementation files: `diagnostics.cpp`, `button_manager.cpp`, `led_signal.cpp`, `task_manager.cpp`, `json_builder.cpp`, `calibration.cpp`, `wifi_manager.cpp` — Ditambahkan file header docs, inline komentar step-by-step, dokumentasi algoritma, guard conditions, dan magic number explanation.
 - [Modified] **Batch 3** — 3 medium implementation files: `data_acquisition.cpp`, `display_oled.cpp`, `menu_manager.cpp` — Ditambahkan dokumentasi lengkap: state machine diagram, layout reference (OLED), thread safety notes, rationalia untuk setiap keputusan desain.
 - [Modified] **Batch 4** — 4 large files: `storage_manager.cpp`, `mqtt_manager.cpp`, `webserver_manager.cpp`, `Data_Logger_Mix_v2.0.0.ino` — Ditambahkan dokumentasi: arsitektur dual-core, NVS key naming convention, MQTT 5-state machine diagram, HTML/CSS reference, watchdog & heap protection flow.
+- [Todo] Daftar fitur yang akan ditambahkan: (1) Fix bug unbalance 0% saat hanya 1 fasa bertegangan, (2) MQTT command handler untuk reboot & reset energy via topic `lutpiii/cmd/{device_id}`.
+
+## 2026/06/14
+
+### Fix Bug Unbalance & Fitur MQTT Command
+- [Fixed] `Data_Logger_Mix_v2.0.0/data_acquisition.h` & `.cpp` — Hapus valid flag requirement di `_computeUnbalance()`, sekarang memakai voltage aktual tanpa gate `valid` flag. Sehingga fasa dengan 0V (PZEM komunikasi baik tapi tanpa beban) tetap dihitung dalam kalkulasi unbalance.
+- [Created] `Data_Logger_Mix_v2.0.0/mqtt_manager.h` — Tambah `MqttCommandCallback`, method `setCommandCallback()`, private `_subscribeToCmd()`, `_onMqttMessage()`, `_staticMqttCallback()`, field `_cmdCallback`, `_instance`, `_cmdSubscribed`.
+- [Modified] `Data_Logger_Mix_v2.0.0/mqtt_manager.cpp` — Implementasi subscribe ke topic `prefix/cmd/DEVICE_ID`, parse JSON command, dispatch ke callback. Dipanggil setelah MQTT CONNECT sukses.
+- [Modified] `Data_Logger_Mix_v2.0.0/Data_Logger_Mix_v2.0.0.ino` — Wiring MQTT command callback: `reboot` → `ESP.restart()`, `reset_energy` → `daq.resetAllEnergy()`.

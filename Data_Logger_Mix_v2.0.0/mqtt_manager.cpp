@@ -34,9 +34,14 @@
 /// Static DNS task parameter block (singleton, one resolution at a time).
 MQTTManager::DnsTaskParam MQTTManager::_dnsParam = {};
 
+/// Singleton instance pointer for static MQTT callback dispatch.
+MQTTManager* MQTTManager::_instance = nullptr;
+
 MQTTManager::MQTTManager(StorageManager& storage)
     : _storage(storage), _mqtt(_plainClient)
-{}
+{
+    _instance = this;
+}
 
 /**
  * @brief Initialise the MQTT manager.
@@ -66,6 +71,7 @@ void MQTTManager::reloadConfig() {
     _dnsResolved       = false;
     _dnsTaskRunning    = false;
     _tcpConnectStarted = false;
+    _cmdSubscribed     = false;
     updateState([](SystemState& s){ s.mqttConnected = false; });
 }
 
@@ -327,6 +333,8 @@ void MQTTManager::_tickConnect() {
         if (ok) {
             diag.info("MQTT", "Connected to broker ✓");
             updateState([](SystemState& s){ s.mqttConnected = true; });
+            _cmdSubscribed = false;  // Force re-subscribe on new connection
+            _subscribeToCmd();
             _connState = ConnState::CONNECTED;
         } else {
             int st = _mqtt.state();
@@ -397,4 +405,99 @@ void MQTTManager::_publishTelemetry(const SystemState& state) {
  */
 bool MQTTManager::isConnected() {
     return _mqtt.connected();
+}
+
+/**
+ * @brief Register the command callback for incoming MQTT command messages.
+ * @param cb Callable invoked with (cmd, phase) when a command is received.
+ */
+void MQTTManager::setCommandCallback(MqttCommandCallback cb) {
+    _cmdCallback = cb;
+}
+
+/**
+ * @brief Subscribe to the MQTT command topic.
+ *
+ * Topic format: `{prefix}/cmd/{DEVICE_ID}`
+ * Example: "lutpiii/cmd/3ph-logger-002"
+ *
+ * Only subscribes once per connection cycle (_cmdSubscribed flag).
+ * Sets up the PubSubClient callback for all incoming messages.
+ */
+void MQTTManager::_subscribeToCmd() {
+    if (_cmdSubscribed) return;
+
+    char topic[128];
+    snprintf(topic, sizeof(topic), "%s/cmd/%s", _cfg.prefix, DEVICE_ID);
+    bool ok = _mqtt.subscribe(topic);
+    if (ok) {
+        _cmdSubscribed = true;
+        _mqtt.setCallback(_staticMqttCallback);
+        diag.info("MQTT", "Subscribed to cmd topic: %s", topic);
+    } else {
+        diag.warn("MQTT", "Subscribe failed: %s", topic);
+    }
+}
+
+/**
+ * @brief Static MQTT callback — dispatches to singleton instance.
+ *
+ * PubSubClient requires a free-function callback with this exact signature.
+ * We maintain a singleton _instance pointer to call the instance method.
+ */
+void MQTTManager::_staticMqttCallback(char* topic, byte* payload, unsigned int length) {
+    if (_instance) {
+        _instance->_onMqttMessage(topic, payload, length);
+    }
+}
+
+/**
+ * @brief Handle an incoming MQTT message on the command topic.
+ *
+ * Parses JSON payload and dispatches to the registered _cmdCallback:
+ * - {"cmd": "reboot"}            → callback("reboot", "")
+ * - {"cmd": "reset_energy", "phase": "all"} → callback("reset_energy", "all")
+ *
+ * Silently ignores unknown commands or malformed JSON.
+ *
+ * @param topic   The MQTT topic string.
+ * @param payload Raw payload bytes.
+ * @param length  Payload length in bytes.
+ */
+void MQTTManager::_onMqttMessage(char* topic, byte* payload, unsigned int length) {
+    // Verify the topic matches our cmd topic (should always match since
+    // PubSubClient only delivers subscribed topics)
+    char expectedTopic[128];
+    snprintf(expectedTopic, sizeof(expectedTopic), "%s/cmd/%s", _cfg.prefix, DEVICE_ID);
+    if (strncmp(topic, expectedTopic, sizeof(expectedTopic)) != 0) return;
+
+    // Convert payload to a null-terminated string
+    char json[256];
+    unsigned int copyLen = (length < sizeof(json) - 1) ? length : sizeof(json) - 1;
+    memcpy(json, payload, copyLen);
+    json[copyLen] = '\0';
+
+    diag.info("MQTT", "CMD received: %s", json);
+
+    // Parse JSON — ArduinoJson v6
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, json);
+    if (err) {
+        diag.warn("MQTT", "CMD parse error: %s", err.c_str());
+        return;
+    }
+
+    // Extract command string
+    const char* cmd = doc["cmd"];
+    if (!cmd || strlen(cmd) == 0) return;
+
+    String phase;
+    if (doc.containsKey("phase")) {
+        phase = doc["phase"].as<String>();
+    }
+
+    // Dispatch to registered callback
+    if (_cmdCallback) {
+        _cmdCallback(String(cmd), phase);
+    }
 }
